@@ -17,7 +17,7 @@ app.use(cors());
 app.use(router);
 
 // we create  a socket on user connection
-io.on("connection", (socket) => {
+io.on("connect", (socket) => {
   console.log("we have a new connection");
   //we use callback for error handling
   socket.on("join", ({ name, room }, callback) => {
@@ -25,6 +25,8 @@ io.on("connection", (socket) => {
     if (error) {
       return callback(error);
     }
+    //immediately put user into the room
+    socket.join(user.room);
     // admin messages are just message, users get sendMessage listeners
     // this emits a message to the joining user
     socket.emit("message", {
@@ -36,7 +38,12 @@ io.on("connection", (socket) => {
       user: "admin",
       text: `${user.name} has joined the chat.`,
     });
-    socket.join(user.room);
+
+    //this emits an object to all the room, available to all users in room
+    io.to(user.room).emit("roomData", {
+      room: user.room,
+      users: getUsersInRoom(user.room),
+    });
 
     callback();
   });
@@ -45,16 +52,26 @@ io.on("connection", (socket) => {
     const user = getUser(socket.id);
 
     io.to(user.room).emit("message", { user: user.name, text: message });
+    io.to(user.room).emit("roomData", {
+      user: user.name,
+      text: message,
+      users: getUsersInRoom(user.room),
+    });
 
     callback();
   });
 
   socket.on("disconnect", () => {
     console.log("user has left the connection");
+    const user = removeUser(socket.id);
+    if (user) {
+      io.to(user.room).emit("message", {
+        user: "admin",
+        text: `${user.name} has left the chat.`,
+      });
+    }
   });
 });
-
-app.use(router);
 
 server.listen(PORT, () => {
   console.log(`Server has started on port: ${PORT}`);
